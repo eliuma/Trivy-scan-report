@@ -76,7 +76,7 @@ runs:
         ignore-unfixed: ${{ inputs.ignore-unfixed }}
         trivyignores: ${{ inputs.trivyignores }}
         format: json
-        output: trivy-results.json
+        output:  ${{ env.REPORT_JSON }}
         exit-code: "0"
 
     - name: Convert to SARIF
@@ -95,8 +95,8 @@ runs:
       id: report
       shell: bash
       env:
-        REPORT_JSON: ${{ inputs.output_path }}.json
-        REPORT_HTML: ${{ inputs.output_path }}.html         # new
+        REPORT_JSON: ${{ env.REPORT_JSON }}
+        REPORT_HTML: ${{ inputs.output_path }}  # new
         REPORT_BASE_DIFFIDS: base-diffids.json  # new
         BASE_IMAGE: ${{ inputs.base-image }}    # new
         REPORT_TARGET: ${{ inputs.image-ref != '' && inputs.image-ref || inputs.scan-ref }}
@@ -110,6 +110,6 @@ runs:
       with:
         name: ${{ inputs.artifact-name }}
         path: |
-               ${{ inputs.output_path }}.json
-               ${{ inputs.output_path }}.html
+               ${{ env.REPORT_JSON }}
+               ${{ inputs.output_path }}
         if-no-files-found: warn
