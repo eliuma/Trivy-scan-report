@@ -84,7 +84,7 @@ runs:
       uses: aquasecurity/trivy-action@v0.36.0
       with:
         scan-type: convert
-        image-ref: trivy-results.json
+        image-ref: ${{ env.REPORT_JSON }}
         severity: ""
         vuln-type: ""
         format: sarif
