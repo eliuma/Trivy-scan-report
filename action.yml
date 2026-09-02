@@ -95,8 +95,8 @@ runs:
       id: report
       shell: bash
       env:
-        REPORT_JSON: trivy-results.json
-        REPORT_HTML: trivy-layers.html          # new
+        REPORT_JSON: ${{ inputs.output_path }}.json
+        REPORT_HTML: ${{ inputs.output_path }}.html         # new
         REPORT_BASE_DIFFIDS: base-diffids.json  # new
         BASE_IMAGE: ${{ inputs.base-image }}    # new
         REPORT_TARGET: ${{ inputs.image-ref != '' && inputs.image-ref || inputs.scan-ref }}
@@ -109,5 +109,7 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.artifact-name }}
-        path: reports
+        path: |
+               ${{ inputs.output_path }}.json
+               ${{ inputs.output_path }}.html
         if-no-files-found: warn
