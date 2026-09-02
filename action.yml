@@ -95,6 +95,7 @@ runs:
       id: report
       shell: bash
       env:
+        REPORT_JSON: trivy-results.json
         REPORT_HTML: trivy-layers.html          # new
         REPORT_BASE_DIFFIDS: base-diffids.json  # new
         BASE_IMAGE: ${{ inputs.base-image }}    # new
@@ -110,4 +111,5 @@ runs:
         name: ${{ inputs.artifact-name }}
         path: |
           trivy-layers.html
+          trivy-results.json
         if-no-files-found: warn
