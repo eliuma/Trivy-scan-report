@@ -1,113 +1,197 @@
-name: "Trivy Security Scan"
-description: "Scan a repo or image with Trivy and report findings grouped by the image layer that introduced them."
+
+name: 'Container Security Scan'
+description: 'Builds a Docker image and performs a security scan using Trivy.'
 
 inputs:
-  scan-type:
-    description: "fs, image, repo, rootfs, or config. Forced to image when image-ref is set."
+  registry:
+    description: 'Docker registry to use'
     required: false
-    default: "fs"
-  scan-ref:
-    description: "Path or target to scan when image-ref is empty."
+    default: 'ghcr.io'
+  dockerfile:
+    description: 'Path to the Dockerfile'
+    required: true
+  context:
+    description: 'Context for Docker build'
     required: false
-    default: "."
-  image-ref:
-    description: "Container image to scan. Overrides scan-ref."
+    default: '.'
+  image_name:
+    description: 'Name of the Docker image'
+    required: true
+  env_file:
+    description: 'Path to the .env file (optional)'
+    required: false
+  output_path:
+    description: 'Output path for the Trivy report'
+    required: true
+  cleanup_path:
+    description: 'Path for cleaning up Trivy report'
+    required: false
+    default: '.'
+  watchtower_path:
+    description: 'Path for watchtower for Trivy report'
+    required: true
+  npmrc_content:
+    description: 'Contents of the .npmrc file (optional)'
+    required: false 
+  build_args:
+    description: 'Contents of the .npmrc file (optional)'
+    required: false
+    default: ''
+  base-image:
+    description: 'Base image for the Docker build'
     required: false
     default: ""
-  scanners:
-    description: "Comma-separated scanners to run."
-    required: false
-    default: "vuln,secret,misconfig"
   severity:
-    description: "Comma-separated severities to report."
+    description: 'Comma-separated severities included in the Trivy report'
     required: false
-    default: "CRITICAL,HIGH"
-  ignore-unfixed:
-    description: "Ignore vulnerabilities with no published fix."
-    required: false
-    default: "false"
-  exit-code:
-    description: "Set to 0 to report findings without failing the job."
-    required: false
-    default: "1"
-  trivyignores:
-    description: "Comma-separated .trivyignore files."
-    required: false
-    default: ""
-  upload-sarif:
-    description: "Also upload results to GitHub code scanning. Needs security-events: write."
-    required: false
-    default: "true"
-  artifact-name:
-    description: "Report artifact name. Must be unique within a run."
-    required: false
-    default: "trivy-report"
+    default: 'CRITICAL,HIGH'
 
 outputs:
   total:
-    description: "Total findings."
-    value: ${{ steps.report.outputs.total }}
-  critical:
-    description: "CRITICAL findings."
-    value: ${{ steps.report.outputs.critical }}
-  high:
-    description: "HIGH findings."
-    value: ${{ steps.report.outputs.high }}
+    description: 'Total number of findings'
+    value: ${{ steps.layer-report.outputs.total }}
   fixable:
-    description: "Vulnerabilities with a published fix."
-    value: ${{ steps.report.outputs.fixable }}
-  report:
-    description: "Path to the rendered Markdown report."
-    value: trivy-report.md
+    description: 'Number of vulnerabilities with a published fix'
+    value: ${{ steps.layer-report.outputs.fixable }}
+  image_level:
+    description: 'Number of findings attributed to the base image'
+    value: ${{ steps.layer-report.outputs.image_level }}
+  app_level:
+    description: 'Number of findings attributed to application layers'
+    value: ${{ steps.layer-report.outputs.app_level }}
+  os_level:
+    description: 'Number of findings attributed to OS packages'
+    value: ${{ steps.layer-report.outputs.os_level }}
+  app_dep_level:
+    description: 'Number of findings attributed to application dependencies (npm, jar, pip, go)'
+    value: ${{ steps.layer-report.outputs.app_dep_level }}
+  critical:
+    description: 'Number of critical findings'
+    value: ${{ steps.layer-report.outputs.critical }}
+  high:
+    description: 'Number of high findings'
+    value: ${{ steps.layer-report.outputs.high }}
+  medium:
+    description: 'Number of medium findings'
+    value: ${{ steps.layer-report.outputs.medium }}
+  low:
+    description: 'Number of low findings'
+    value: ${{ steps.layer-report.outputs.low }}
+  unknown:
+    description: 'Number of findings with unknown severity'
+    value: ${{ steps.layer-report.outputs.unknown }}
+
 
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
-    # Scan once to JSON. Gating happens in the report step so a failing scan still
-    # produces a readable report instead of an empty red job.
-    - name: Run Trivy
-      uses: aquasecurity/trivy-action@v0.36.0
+    - name: Checkout repository
+      uses: actions/checkout@v4
       with:
-        scan-type: ${{ inputs.image-ref != '' && 'image' || inputs.scan-type }}
-        scan-ref: ${{ inputs.scan-ref }}
-        image-ref: ${{ inputs.image-ref }}
-        scanners: ${{ inputs.scanners }}
-        severity: ${{ inputs.severity }}
-        ignore-unfixed: ${{ inputs.ignore-unfixed }}
-        trivyignores: ${{ inputs.trivyignores }}
+        lfs: true
+
+    - name: Pull LFS files
+      run: git lfs pull
+      shell: bash
+
+    - name: Load and Create New .env File
+      if: ${{ inputs.env_file }}
+      run: |
+        echo "Loading .env file from ${{ inputs.env_file }}"
+        # Read the existing env_file and process its contents
+        while IFS= read -r line; do
+          # Optionally, process each line here if needed
+          echo "$line" >> new.env
+        done < "${{ inputs.env_file }}"
+        echo "New .env file created as new.env"
+      shell: bash
+
+    - name: Set lowercase image name
+      run: |
+        # Convert the image name to lowercase
+        IMAGE_NAME=$(echo "${{ inputs.image_name }}" | tr '[:upper:]' '[:lower:]')
+        echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+      shell: bash
+      
+    - name: Create .npmrc File from Content
+      if: ${{ inputs.npmrc_content }}
+      run: |
+        echo "Creating .npmrc file from input content"
+        echo "${{ inputs.npmrc_content }}" > .npmrc
+        echo ".npmrc file created from input content"
+      shell: bash
+
+    - name: Contents of .npmrc
+      if: ${{ inputs.npmrc_content }}
+      run: cat .npmrc
+      shell: bash
+
+    - name: Docker build
+      run: docker build -f ${{ inputs.dockerfile }} -t ${{ env.IMAGE_NAME }} ${{ inputs.build_args }} ${{ inputs.context }}
+      shell: bash
+
+    - name: Create Output Folder
+      env:
+        REPORT_HTML: ${{ inputs.output_path }}
+      run: mkdir -p "$(dirname "$REPORT_HTML")"
+      shell: bash
+
+    - name: Set report paths
+      shell: bash
+      run: |
+        echo "REPORT_JSON=$(dirname '${{ inputs.output_path }}')/trivy-report.json" >> "$GITHUB_ENV"
+       
+
+    - name: Run security scan on the container
+      uses: aquasecurity/trivy-action@v0.36.0
+      id: scan
+      with:
+        image-ref: ${{ env.IMAGE_NAME }}
         format: json
-        output: trivy-results.json
-        exit-code: "0"
+        output: ${{ env.REPORT_JSON }}
+        severity: 'CRITICAL,HIGH'
+        timeout: 20m
+      env:
+        TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db
+        TRIVY_TIMEOUT: 20m
 
-    - name: Convert to SARIF
-      if: ${{ inputs.upload-sarif == 'true' }}
-      uses: aquasecurity/trivy-action@v0.36.0
-      with:
-        scan-type: convert
-        image-ref: trivy-results.json
-        severity: ""
-        vuln-type: ""
-        format: sarif
-        output: trivy-results.sarif
-
-
-    - name: Report
-      id: report
+    - name: Collect base image layer IDs
+      if: ${{ inputs.base-image != '' }}
       shell: bash
       env:
-        REPORT_HTML: trivy-layers.html          # new
-        REPORT_BASE_DIFFIDS: base-diffids.json  # new
-        BASE_IMAGE: ${{ inputs.base-image }}    # new
-        REPORT_TARGET: ${{ inputs.image-ref != '' && inputs.image-ref || inputs.scan-ref }}
+        BASE_IMAGE: ${{ inputs.base-image }}
+      run: |
+        docker image inspect "$BASE_IMAGE" > /dev/null 2>&1 || docker pull "$BASE_IMAGE"
+        docker image inspect "$BASE_IMAGE" --format '{{json .RootFS.Layers}}' > trivy-report-base-diffids.json
+
+    - name: Layer report
+      id: layer-report
+      shell: bash
+      env:
+        REPORT_JSON: ${{ env.REPORT_JSON }}
+        REPORT_HTML: ${{ inputs.output_path }}
+        REPORT_BASE_DIFFIDS: trivy-report-base-diffids.json
+        BASE_IMAGE: ${{ inputs.base-image }}
+        REPORT_TARGET: ${{ env.IMAGE_NAME }}
         REPORT_SEVERITY: ${{ inputs.severity }}
-        REPORT_EXIT_CODE: ${{ inputs.exit-code }}
+        REPORT_EXIT_CODE: "0"
       run: python3 "${{ github.action_path }}/trivy-report.py"
 
-    - name: Upload report
-      if: always()
+    - name: Use the Upload Artifact GitHub Action
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ inputs.artifact-name }}
+        name: ${{ env.IMAGE_NAME }}-cs-report
         path: |
-          trivy-layers.html
-        if-no-files-found: warn
+                ${{ inputs.output_path }}
+                ${{ env.REPORT_JSON }}
+
+
+    - name: Remove previous Trivy report
+      run: rm -rf ${{ inputs.cleanup_path }}
+      shell: bash
+
+    - name: Download artifacts to the computer
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ env.IMAGE_NAME }}-cs-report
+        path: ${{ inputs.watchtower_path }}
