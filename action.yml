@@ -119,6 +119,12 @@ runs:
     - name: Docker build
       run: docker build -f ${{ inputs.dockerfile }} -t ${{ env.IMAGE_NAME }} ${{ inputs.build_args }} ${{ inputs.context }}
       shell: bash
+    
+    - name: Set report paths
+      shell: bash
+      run: |
+        echo "REPORT_JSON=$(dirname '${{ inputs.output_path }}')/trivy-report.json" >> "$GITHUB_ENV"
+        echo "REPORT_HTML=${{ inputs.output_path }}" >> "$GITHUB_ENV"
        
     - name: Run security scan on the container
       uses: aquasecurity/trivy-action@v0.36.0
@@ -147,7 +153,7 @@ runs:
       shell: bash
       env:
         REPORT_JSON: ${{ env.REPORT_JSON }}
-        REPORT_HTML: ${{ inputs.output_path }}
+        REPORT_HTML: ${{ env.REPORT_HTML }}
         REPORT_BASE_DIFFIDS: trivy-report-base-diffids.json
         BASE_IMAGE: ${{ inputs.base-image }}
         REPORT_TARGET: ${{ env.IMAGE_NAME }}
@@ -160,5 +166,4 @@ runs:
       with:
         name: ${{ env.IMAGE_NAME }}-cs-report
         path: |
-                ${{ inputs.output_path }}
-                ${{ env.REPORT_JSON }}
+                ${{ env.REPORT_HTML }}
