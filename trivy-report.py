@@ -5,7 +5,11 @@ Env: REPORT_JSON REPORT_TARGET REPORT_SEVERITY REPORT_EXIT_CODE REPORT_MD
      REPORT_HTML REPORT_MAX_ROWS REPORT_BASE_DIFFIDS BASE_IMAGE
 Exits 1 on findings (unless REPORT_EXIT_CODE=0) and always on an unreadable report.
 """
-import json, os, sys
+import json
+import os
+import sys
+
+OSPKG = ("alpine", "debian", "ubuntu", "redhat", "rocky", "almalinux", "amazon")
 
 env = os.getenv
 SEV = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"]
@@ -128,8 +132,8 @@ def main():
             i, instr = lmap.get(d, (-1, "(not attributed to a layer)"))
             org = "unclassified" if not base else ("image" if d in base else "app")
             fx = v.get("FixedVersion") or ""
-            act = ("No upstream fix. POA&M entry required." if not fx else
-                   "Rebuild on a newer %s, or copa patch. Not a Dockerfile fix." % BASE
+            act = ("No fix published upstream yet." if not fx else
+                   "Rebuild on a newer %s." % BASE
                    if org == "image" else
                    "Fixed in %s. Layer origin unknown -- pass a base image ref." % fx
                    if org == "unclassified" else
@@ -156,6 +160,8 @@ def main():
     total, nfix = len(vulns) + len(extras), sum(1 for r in vulns if r["fix"])
     nimg = sum(len(rows) for k, rows in secs if k[3] == "image")
     napp = sum(len(rows) for k, rows in secs if k[3] == "app")
+    napp_os = sum(len(rows) for k, rows in secs if k[3] == "app" and k[2] in OSPKG)
+    napp_lang = sum(len(rows) for k, rows in secs if k[3] == "app" and k[2] not in OSPKG)
     cnt = {}
     for s in [r["sev"] for r in vulns] + [e[1] for e in extras]:
         cnt[s] = cnt.get(s, 0) + 1
@@ -166,10 +172,10 @@ def main():
          'Plex+Sans:wght@400;500;600&display=swap"><style>%s</style>' % CSS,
          '<div class="wrap"><h1>Container scan &mdash; layer attribution</h1>'
          '<p class="img">%s</p><div class="tally">' % esc(target)]
-    H += ['<div><div class="t-n">%d</div><div class="t-l">%s</div></div>' % (n, l)
-          for l, n in (("Image level", nimg), ("App level", napp),
-                       ("No fix available", sum(1 for r in vulns if not r["fix"])),
-                       ("Total", total))]
+    H += ['<div><div class="t-n">%d</div><div class="t-l">%s</div></div>' % (n, lbl)
+          for lbl, n in (("Image level", nimg), ("OS packages", napp_os),
+                         ("Language packages", napp_lang), ("No fix available", sum(1 for r in vulns if not r["fix"])),
+                         ("Total", total))]
     H.append("</div>")
     if not total:
         H.append('<p class="clean">No findings at the requested severities.</p>')
@@ -180,9 +186,11 @@ def main():
             H.append('<div class="bound"><span></span><span><b>base image ends</b>'
                      '</span></div>')
             drawn = True
+        chip = ("base" if org == "image" else 
+                ("os" if pt in OSPKG else "language") if org == "app" else org)
         H.append('<div class="row"><div class="rail"><span class="lidx">%s</span>'
                  '<span class="chip %s">%s</span></div><div class="body"><p class="cmd">'
-                 '%s</p>' % ("&mdash;" if i < 0 else "%02d" % i, org, org, esc(instr)))
+                 '%s</p>' % ("&mdash;" if i < 0 else "%02d" % i, org, chip, esc(instr)))
         H += ['<div class="f"><div class="f-h"><span class="sev %s">%s</span><span>%s</span>'
               '<span class="pkg">%s %s &rarr; %s</span></div><div class="act %s">%s</div>'
               '</div>' % (r["sev"], r["sev"], esc(r["id"]), esc(r["pkg"]), esc(r["ins"]),
@@ -235,16 +243,14 @@ def main():
     out = "\n".join(md).rstrip() + "\n"
     if env("REPORT_MD"):
         open(env("REPORT_MD"), "w").write(out)
-    if env("GITHUB_STEP_SUMMARY"):
-        open(env("GITHUB_STEP_SUMMARY"), "a").write(out)
     if env("GITHUB_OUTPUT"):
         with open(env("GITHUB_OUTPUT"), "a") as fh:
             fh.write("total=%d\nfixable=%d\nimage_level=%d\napp_level=%d\n"
-                     % (total, nfix, nimg, napp))
+                     "os_level=%d\napp_dep_level=%d\n"
+                     % (total, nfix, nimg, napp, napp_os, napp_lang))
             fh.writelines("%s=%d\n" % (s.lower(), cnt.get(s, 0)) for s in SEV)
     print(out)
     return 1 if total and (env("REPORT_EXIT_CODE") or "1") != "0" else 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

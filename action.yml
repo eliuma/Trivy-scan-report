@@ -164,6 +164,6 @@ runs:
     - name: Use the Upload Artifact GitHub Action
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ env.IMAGE_NAME }}-cs-report
+        name: trivy-html-report
         path: |
                 ${{ inputs.output_path }}
