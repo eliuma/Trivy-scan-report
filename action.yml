@@ -124,7 +124,7 @@ runs:
       shell: bash
       run: |
         echo "REPORT_JSON=$(dirname '${{ inputs.output_path }}')/trivy-report.json" >> "$GITHUB_ENV"
-        echo "REPORT_HTML=${{ inputs.output_path }}" >> "$GITHUB_ENV"
+        echo "REPORT_HTML=${{ inputs.output_path }}/trivy-report.html" >> "$GITHUB_ENV"
        
     - name: Run security scan on the container
       uses: aquasecurity/trivy-action@v0.36.0
