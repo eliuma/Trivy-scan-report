@@ -20,16 +20,6 @@ inputs:
   env_file:
     description: 'Path to the .env file (optional)'
     required: false
-  output_path:
-    description: 'Output path for the Trivy report'
-    required: true
-  cleanup_path:
-    description: 'Path for cleaning up Trivy report'
-    required: false
-    default: '.'
-  watchtower_path:
-    description: 'Path for watchtower for Trivy report'
-    required: true
   npmrc_content:
     description: 'Contents of the .npmrc file (optional)'
     required: false 
@@ -129,19 +119,7 @@ runs:
     - name: Docker build
       run: docker build -f ${{ inputs.dockerfile }} -t ${{ env.IMAGE_NAME }} ${{ inputs.build_args }} ${{ inputs.context }}
       shell: bash
-
-    - name: Create Output Folder
-      env:
-        REPORT_HTML: ${{ inputs.output_path }}
-      run: mkdir -p "$(dirname "$REPORT_HTML")"
-      shell: bash
-
-    - name: Set report paths
-      shell: bash
-      run: |
-        echo "REPORT_JSON=$(dirname '${{ inputs.output_path }}')/trivy-report.json" >> "$GITHUB_ENV"
        
-
     - name: Run security scan on the container
       uses: aquasecurity/trivy-action@v0.36.0
       id: scan
@@ -184,14 +162,3 @@ runs:
         path: |
                 ${{ inputs.output_path }}
                 ${{ env.REPORT_JSON }}
-
-
-    - name: Remove previous Trivy report
-      run: rm -rf ${{ inputs.cleanup_path }}
-      shell: bash
-
-    - name: Download artifacts to the computer
-      uses: actions/download-artifact@v4
-      with:
-        name: ${{ env.IMAGE_NAME }}-cs-report
-        path: ${{ inputs.watchtower_path }}
