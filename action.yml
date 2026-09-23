@@ -35,6 +35,14 @@ inputs:
     description: 'Comma-separated severities included in the Trivy report'
     required: false
     default: 'CRITICAL,HIGH'
+  poam_url:
+    description: 'Base URL of the POA&M dashboard (publish is skipped if empty)'
+    required: false
+    default: ''
+  poam_ingest_token:
+    description: 'POA&M ingest token (pass from secrets)'
+    required: false
+    default: ''
 
 outputs:
   total:
@@ -160,6 +168,24 @@ runs:
         REPORT_SEVERITY: ${{ inputs.severity }}
         REPORT_EXIT_CODE: "0"
       run: python3 "${{ github.action_path }}/trivy-report.py"
+    
+    - name: Publish to POA&M dashboard
+      if: ${{ always() && inputs.poam_url != '' }}
+      shell: bash
+      env:
+        POAM_URL: ${{ inputs.poam_url }}
+        POAM_INGEST_TOKEN: ${{ inputs.poam_ingest_token }}
+        SOURCE: ${{ github.repository }}
+      run: |
+        if [ ! -s "$REPORT_JSON" ]; then
+          echo "::error::Trivy report '$REPORT_JSON' not found; nothing to publish."
+          exit 1
+        fi
+        curl -sS --fail-with-body -X POST \
+          "${POAM_URL%/}/ingest?source=${SOURCE//\//%2F}" \
+          -H "X-Ingest-Token: $POAM_INGEST_TOKEN" \
+          -H "Content-Type: application/json" \
+          --data-binary @"$REPORT_JSON"
 
     - name: Use the Upload Artifact GitHub Action
       uses: actions/upload-artifact@v4
